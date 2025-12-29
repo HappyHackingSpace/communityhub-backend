@@ -1,4 +1,4 @@
-import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { CommandHandler, ICommandHandler, EventBus } from '@nestjs/cqrs';
 import { Inject } from '@nestjs/common';
 import { CreateTaskCommand } from './create-task.command';
 import { Task } from '../../../domain/entities/task.entity';
@@ -9,6 +9,7 @@ import type { IAssignmentHistoryRepository } from '../../../domain/repositories/
 import { ActivityLog } from '../../../domain/entities/activity-log.entity';
 import { AssignmentHistory } from '../../../domain/entities/assignment-history.entity';
 import { ActivityAction } from '../../../domain/enums/activity-action.enum';
+import { TaskAssignedEvent } from '../../../domain/events/task-assigned.event';
 
 @CommandHandler(CreateTaskCommand)
 export class CreateTaskHandler implements ICommandHandler<CreateTaskCommand> {
@@ -21,6 +22,7 @@ export class CreateTaskHandler implements ICommandHandler<CreateTaskCommand> {
     private readonly taskTagRepository: ITaskTagRepository,
     @Inject('IAssignmentHistoryRepository')
     private readonly assignmentHistoryRepository: IAssignmentHistoryRepository,
+    private readonly eventBus: EventBus,
   ) {}
 
   async execute(command: CreateTaskCommand): Promise<Task> {
@@ -66,6 +68,16 @@ export class CreateTaskHandler implements ICommandHandler<CreateTaskCommand> {
         assignedTo: command.assigneeId,
       });
       await this.assignmentHistoryRepository.save(history);
+
+      // Publish task assigned event for notification
+      const event = new TaskAssignedEvent(
+        savedTask.id,
+        savedTask.title.value,
+        command.assignerId,
+        command.assigneeId,
+        savedTask.dueDate,
+      );
+      this.eventBus.publish(event);
     }
 
     return savedTask;
